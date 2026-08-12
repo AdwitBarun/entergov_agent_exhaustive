@@ -1,0 +1,1 @@
+{"schema_baseline":{"schema":{"customer_id":"object","email":"object","phone":"object","age":"int64","transaction_amount":"int64","created_at":"object","updated_at":"object","status":"object"}},"stats_baseline":{"rows":1000}}

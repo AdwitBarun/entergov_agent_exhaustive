@@ -1,0 +1,6 @@
+customer_id,email,phone,age,transaction_amount,created_at,updated_at,status,middle_name
+C001,rahul@example.com,+919876543210,31,1200,2026-01-01,2026-01-02,Active,
+C002,bad-email,9876543210,-5,1500,2026-01-02,2025-12-31,Active,
+,meera@example.com,9999999999,40,-100,2026-01-03,2026-01-04,Active,
+C004,aisha@example.com,9123456789,29,1250000,2030-01-01,2030-01-02,Active,
+C004,aisha@example.com,9123456789,29,1250000,2030-01-01,2030-01-02,Active,
