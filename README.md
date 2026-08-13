@@ -24,13 +24,15 @@ pip install -r requirements.txt
 streamlit run app.py
 ```
 
-## API key setup
+## Grok API key setup
 
 Create `.streamlit/secrets.toml` locally:
 
 ```toml
-GOOGLE_API_KEY = "your_key_here"
+GROK_API_KEY = "your_key_here"
 ```
+
+The app also accepts `XAI_API_KEY`, which is the official xAI environment variable name. You can override the default model with `GROK_MODEL` and the OpenAI-compatible endpoint with `GROK_BASE_URL`.
 
 Do not commit real credentials. `.streamlit/secrets.toml.example` is included as a template.
 

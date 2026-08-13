@@ -12,40 +12,59 @@ except Exception:
     pass
 
 DEFAULT_MODEL = os.getenv(
-    "GENAI_MODEL",
-    "gemini-3.5-flash-lite"
+    "GROK_MODEL",
+    "grok-4.5"
+)
+
+DEFAULT_BASE_URL = os.getenv(
+    "GROK_BASE_URL",
+    os.getenv(
+        "XAI_BASE_URL",
+        "https://api.x.ai/v1"
+    )
 )
 
 
 def _get_api_key() -> str | None:
     """
-    Reads the Gemini API key from:
+    Reads the Grok/xAI API key from:
 
     1. Streamlit secrets
     2. Environment variable
 
-    Uses GOOGLE_API_KEY as the single supported
-    application configuration variable.
+    GROK_API_KEY is the project-level setting. XAI_API_KEY
+    is also accepted because it is the official xAI
+    environment variable name.
     """
+
+    key_names = (
+        "GROK_API_KEY",
+        "XAI_API_KEY",
+    )
 
     try:
         import streamlit as st
 
-        key = st.secrets.get(
-            "GOOGLE_API_KEY"
-        )
+        for name in key_names:
+            key = st.secrets.get(
+                name
+            )
 
-        if key:
-            return str(key).strip()
+            if key:
+                return str(key).strip()
 
     except Exception:
         pass
 
-    key = os.getenv(
-        "GOOGLE_API_KEY"
-    )
+    for name in key_names:
+        key = os.getenv(
+            name
+        )
 
-    return key.strip() if key else None
+        if key:
+            return key.strip()
+
+    return None
 
 
 def available() -> bool:
@@ -55,18 +74,15 @@ def available() -> bool:
 
 def _get_client():
     """
-    Uses the new Google GenAI SDK:
+    Uses xAI's OpenAI-compatible API endpoint.
 
-        from google import genai
-
-    Do not use:
-
-        import google.generativeai as genai
+        from openai import OpenAI
     """
-    from google import genai
+    from openai import OpenAI
 
-    return genai.Client(
-        api_key=_get_api_key()
+    return OpenAI(
+        api_key=_get_api_key(),
+        base_url=DEFAULT_BASE_URL,
     )
 
 
@@ -115,11 +131,19 @@ def stream_answer(
 
         model = model_name or DEFAULT_MODEL
 
-        for chunk in client.models.generate_content_stream(
+        for chunk in client.chat.completions.create(
             model=model,
-            contents=prompt
+            messages=[
+                {
+                    "role": "user",
+                    "content": prompt,
+                }
+            ],
+            stream=True,
         ):
-            text = getattr(chunk, "text", None)
+            choice = chunk.choices[0] if chunk.choices else None
+            delta = getattr(choice, "delta", None) if choice else None
+            text = getattr(delta, "content", None) if delta else None
 
             if text:
                 yield text
