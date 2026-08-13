@@ -1,0 +1,1 @@
+"""core package: shared data models (models.py), file ingestion (ingestion.py), profiling (profiling.py), policy parsing (policy_context.py), risk scoring/routing (rule_engine.py), and the pipeline entry point (orchestrator.py)."""

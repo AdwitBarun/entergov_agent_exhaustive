@@ -1,6 +1,37 @@
+"""
+agents/business_rule_agent.py
+================================
+Deterministic Business Rule Agent. Runs generic format checks that apply to
+ANY dataset regardless of domain: email format validity (matched by column
+NAME containing "email") and date parseability / future-date checks
+(matched by column NAME containing date/created/updated/start/end).
+
+Also logs (does not yet execute) that policy rules were loaded, as a
+reminder that policy clauses need to be turned into real executable checks
+- see ARCHITECTURE.md "Known Gaps": policy_rules from core/policy_context.py
+are currently NOT compiled into runnable validation logic anywhere in this
+codebase; BUS-POLICY-MAP-001 just reports the count.
+
+Called from: core/orchestrator.py -> business_rule_agent.run(df, profile, rules)
+"""
 import re, pandas as pd
 from core.models import AgentResult, Finding
+
+
 def run(df, profile, policy_rules=None):
+    """
+    Findings raised:
+      BUS-FORMAT-EMAIL-001 - invalid email format in any column whose name
+                              contains "email" (auto_remediable=True).
+      BUS-DATE-001          - unparsable date values in date-like columns
+                              (auto_remediable=True).
+      BUS-DATE-002          - dates parsed but land in the future, in
+                              columns NOT named like a scheduling field
+                              (excludes "expiry"/"future"/"scheduled").
+      BUS-POLICY-MAP-001    - informational: policy rules were loaded (see
+                              module docstring for the caveat that these
+                              aren't yet compiled into executable checks).
+    """
     dataset = profile.get("dataset",{}).get("name","uploaded_dataset"); rules = policy_rules or []; findings=[]
     for col in df.columns:
         low=col.lower()

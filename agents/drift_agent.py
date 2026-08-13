@@ -1,5 +1,26 @@
+"""
+agents/drift_agent.py
+========================
+Deterministic Anomaly/Drift Agent. Two independent checks:
+1. Row-volume drift vs. an optional baseline_stats["rows"] value
+   (from an uploaded baseline JSON - see sample_data/baseline.json).
+2. Per-column numeric outlier spread: flags columns where the standard
+   deviation is more than 5x the mean (a crude but cheap "does this look
+   statistically wild" signal), independent of any baseline.
+
+Called from: core/orchestrator.py -> drift_agent.run(profile, baseline_stats)
+"""
 from core.models import AgentResult, Finding
+
+
 def run(profile, baseline_stats=None):
+    """
+    Findings raised:
+      DRIFT-VOLUME-001  - row count changed >50% vs. baseline_stats['rows'].
+      DRIFT-BASE-001    - informational: no baseline_stats provided at all.
+      DRIFT-OUTLIER-001 - a numeric column's std/mean ratio exceeds 5x,
+                          per-column, no baseline required.
+    """
     dataset = profile.get("dataset",{}).get("name","uploaded_dataset"); rows = profile.get("rows",0); findings=[]
     if baseline_stats and baseline_stats.get("rows"):
         prev = baseline_stats["rows"]; delta = abs(rows-prev) / max(prev,1) * 100

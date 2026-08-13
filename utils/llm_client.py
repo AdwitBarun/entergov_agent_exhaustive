@@ -1,3 +1,33 @@
+"""
+utils/llm_client.py
+======================
+THE ONLY FILE THAT TALKS TO AN LLM PROVIDER. Every other file in this
+project treats the LLM purely through this module's functions - so if you
+ever want to swap providers again (e.g. to Anthropic or OpenAI directly),
+this is the one file you need to touch.
+
+PROVIDER: xAI's Grok API (formerly Google Gemini in earlier versions of
+this project - see git history/README "Migration notes" if you kept it).
+Grok's API is OpenAI-SDK-compatible: same request/response shape as
+OpenAI's Chat Completions API, just a different base_url and API key. That
+means we reuse the official `openai` Python package instead of writing raw
+HTTP calls; the api_key and base_url are the only things that change.
+
+Docs: https://docs.x.ai/docs/guides/chat-completions
+Base URL: https://api.x.ai/v1
+Auth: Bearer token via the XAI_API_KEY environment variable / Streamlit secret.
+
+Design principle carried over from the original version of this file:
+"Rules detect, LLM explains." Every function here is called AT MOST ONCE
+per governance scan or per chat message (see agents/reasoning_agents.py -
+generate_scan_narrative() makes exactly one call for the WHOLE scan, not
+one call per finding) to control cost and latency.
+
+If no API key is configured, every function below degrades gracefully to a
+canned fallback response rather than raising - so the rest of the app keeps
+working without Grok configured (see _quiet_fallback()).
+"""
+
 from __future__ import annotations
 
 import os
@@ -11,60 +41,46 @@ try:
 except Exception:
     pass
 
+# The Grok model to use. Override via the XAI_MODEL environment variable if
+# you want a different model without touching code. xAI ships new model
+# versions periodically (as of this writing: grok-4.5 / grok-4.6 are current
+# flagship models) - check https://docs.x.ai/docs/models for the latest list
+# before assuming this default is still current.
 DEFAULT_MODEL = os.getenv(
-    "GROK_MODEL",
+    "XAI_MODEL",
     "grok-4.5"
-)
-
-DEFAULT_BASE_URL = os.getenv(
-    "GROK_BASE_URL",
-    os.getenv(
-        "XAI_BASE_URL",
-        "https://api.x.ai/v1"
-    )
 )
 
 
 def _get_api_key() -> str | None:
     """
-    Reads the Grok/xAI API key from:
+    Reads the xAI (Grok) API key from:
 
-    1. Streamlit secrets
-    2. Environment variable
+    1. Streamlit secrets (.streamlit/secrets.toml, key: XAI_API_KEY)
+    2. Environment variable XAI_API_KEY
 
-    GROK_API_KEY is the project-level setting. XAI_API_KEY
-    is also accepted because it is the official xAI
-    environment variable name.
+    Uses XAI_API_KEY as the single supported
+    application configuration variable.
     """
-
-    key_names = (
-        "GROK_API_KEY",
-        "XAI_API_KEY",
-    )
 
     try:
         import streamlit as st
 
-        for name in key_names:
-            key = st.secrets.get(
-                name
-            )
+        key = st.secrets.get(
+            "XAI_API_KEY"
+        )
 
-            if key:
-                return str(key).strip()
+        if key:
+            return str(key).strip()
 
     except Exception:
         pass
 
-    for name in key_names:
-        key = os.getenv(
-            name
-        )
+    key = os.getenv(
+        "XAI_API_KEY"
+    )
 
-        if key:
-            return key.strip()
-
-    return None
+    return key.strip() if key else None
 
 
 def available() -> bool:
@@ -74,15 +90,17 @@ def available() -> bool:
 
 def _get_client():
     """
-    Uses xAI's OpenAI-compatible API endpoint.
+    Build an OpenAI-SDK client pointed at xAI's OpenAI-compatible endpoint.
 
-        from openai import OpenAI
+    Requires the `openai` package (see requirements.txt). The ONLY
+    difference from a normal OpenAI client is the `base_url` and the API
+    key coming from XAI_API_KEY instead of OPENAI_API_KEY.
     """
     from openai import OpenAI
 
     return OpenAI(
         api_key=_get_api_key(),
-        base_url=DEFAULT_BASE_URL,
+        base_url="https://api.x.ai/v1",
     )
 
 
@@ -131,18 +149,17 @@ def stream_answer(
 
         model = model_name or DEFAULT_MODEL
 
-        for chunk in client.chat.completions.create(
+        # xAI's chat.completions endpoint follows the OpenAI streaming
+        # shape: each chunk has choices[0].delta.content (may be None for
+        # chunks that carry no new text, e.g. the final chunk).
+        stream = client.chat.completions.create(
             model=model,
-            messages=[
-                {
-                    "role": "user",
-                    "content": prompt,
-                }
-            ],
+            messages=[{"role": "user", "content": prompt}],
             stream=True,
-        ):
-            choice = chunk.choices[0] if chunk.choices else None
-            delta = getattr(choice, "delta", None) if choice else None
+        )
+
+        for chunk in stream:
+            delta = chunk.choices[0].delta if chunk.choices else None
             text = getattr(delta, "content", None) if delta else None
 
             if text:
@@ -245,6 +262,7 @@ def governance_prompt(
     result: Dict[str, Any] | None,
     df_preview=None
 ) -> str:
+    """Build the prompt used for the Copilot chat when intent_router classifies the question as 'governance'."""
     return f"""
 You are an enterprise data governance copilot.
 
@@ -272,6 +290,7 @@ Answer professionally with:
 
 
 def general_prompt(question: str) -> str:
+    """Build the prompt used for the Copilot chat when intent_router classifies the question as 'general' (not data/governance related)."""
     return f"""
 Answer the user's general question directly and concisely.
 
@@ -289,6 +308,7 @@ Question:
 def executive_summary_prompt(
     result: Dict[str, Any]
 ) -> str:
+    """Prompt template for an executive summary. NOTE: not currently called anywhere in the codebase (agents/reasoning_agents.py builds its own inline prompt instead) - kept for reuse/future use."""
     return f"""
 Create an executive governance summary from this scan.
 

@@ -1,6 +1,40 @@
+"""
+agents/compliance_agent.py
+=============================
+Deterministic Compliance Agent. Flags columns whose semantic type or
+detected value patterns (from core/profiling.py) indicate sensitive/regulated
+data (PII, credentials), flags PDF policy documents that need OCR, and
+raises a low-confidence "no direct hit" finding if policy context was
+loaded but nothing concrete was found (so the gap doesn't go silently unnoticed).
+
+Called from: core/orchestrator.py -> compliance_agent.run(profile, rules, pdf_text_profile)
+"""
 from core.models import AgentResult, Finding
+
+# Semantic types (from core/profiling.py::infer_semantic_type) considered
+# sensitive enough to always raise a compliance finding.
 SENSITIVE = {"email", "phone", "aadhaar", "pan", "passport", "name", "address", "dob", "credential"}
+
+
 def run(profile, policy_rules=None, pdf_text_profile=None):
+    """
+    Args:
+        profile: dict from core.profiling.profile_dataframe().
+        policy_rules: list of PolicyRule from core.policy_context.parse_policy_text().
+        pdf_text_profile: dict from core.ingestion.extract_pdf_text(), used to
+            detect scanned/non-extractable policy PDFs.
+
+    Findings raised:
+      CMP-PII-001    - a column's semantic type or value pattern indicates
+                       sensitive/regulated data (critical if it's a
+                       high-confidence pattern hit like Aadhaar/PAN/API key,
+                       high severity otherwise).
+      CMP-PDF-001    - the uploaded policy PDF appears to need OCR (no
+                       extractable text layer was found).
+      CMP-POLICY-001 - policy rules were loaded but no PII/OCR finding was
+                       otherwise raised; flags that the policy can't be
+                       fully enforced without more governance metadata.
+    """
     rules = policy_rules or []; findings = []; dataset = profile.get("dataset",{}).get("name","uploaded_dataset"); rows = profile.get("rows",0)
     for c in profile.get("columns_profile", []):
         col = c["column"]; sem = c.get("semantic_type"); hits = c.get("pii_value_hits", [])

@@ -1,5 +1,24 @@
+"""
+agents/metadata_agent.py
+===========================
+Deterministic Metadata Agent. Builds a simple data catalog from the profile
+(one entry per column: classification, criticality, nullability, lineage
+status) and flags columns that need an assigned owner but don't appear to
+have one (lineage_status/certification_status are always "Unknown"/
+"Uncertified" placeholders in this version - see ARCHITECTURE.md "Known Gaps",
+there's no actual ownership/lineage data source wired in).
+
+Called from: core/orchestrator.py -> metadata_agent.run(profile)
+"""
 from core.models import AgentResult, Finding
+
+
 def run(profile):
+    """
+    Builds `metadata['catalog']` (a list of per-column catalog entries, shown
+    in the 'Policy & Metadata' tab) and raises META-CAT-001 if any column
+    that's sensitive/high-criticality lacks explicit owner metadata.
+    """
     dataset = profile.get("dataset",{}).get("name","uploaded_dataset"); catalog=[]; missing=[]
     for c in profile.get("columns_profile", []):
         cls = "Sensitive / PII" if c.get("potential_pii") else "Business Data"; needs = cls == "Sensitive / PII" or c.get("business_criticality") in {"critical", "high"}

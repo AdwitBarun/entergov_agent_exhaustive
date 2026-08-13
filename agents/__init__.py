@@ -1,0 +1,1 @@
+"""agents package: deterministic governance agents (data quality, compliance, metadata, schema, business rule, drift, remediation) plus the LLM reasoning enrichment layer. See agents/*.py docstrings for each agent, and core/orchestrator.py for the call order."""

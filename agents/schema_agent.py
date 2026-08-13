@@ -1,6 +1,29 @@
+"""
+agents/schema_agent.py
+=========================
+Deterministic Schema/Data Contract Agent. Compares the current column
+schema against an optional user-supplied baseline (uploaded as a JSON file
+from the sidebar, see sample_data/baseline.json for the expected shape:
+{"schema_baseline": {"schema": {col: dtype, ...}}, "stats_baseline": {"rows": N}}).
+
+Without a baseline, this agent can only report that drift detection is
+unavailable (an informational finding, not an error).
+
+Called from: core/orchestrator.py -> schema_agent.run(profile, baseline_schema)
+"""
 from difflib import get_close_matches
 from core.models import AgentResult, Finding
+
+
 def run(profile, baseline=None):
+    """
+    Detects added/removed/type-changed columns vs. `baseline`, and attempts
+    to guess column renames (a removed column fuzzy-matched to an added one
+    via difflib.get_close_matches, cutoff=0.72).
+
+    Severity: critical if any column was removed or changed type (likely
+    breaking), high if only rename candidates were found, medium otherwise.
+    """
     dataset = profile.get("dataset",{}).get("name","uploaded_dataset"); current = {c["column"]: c.get("dtype") for c in profile.get("columns_profile", [])}; findings=[]
     if not baseline:
         findings.append(Finding("Schema/Data Contract Agent", "SCH-BASE-001", "info", "No baseline schema or data contract was provided.", "Save this trusted run as a baseline or upload a data contract for future comparison.", dataset, None, 1.0, {"current_columns": list(current)}, "Schema drift cannot be fully classified without a baseline.", False, False, "Baseline Missing", "Auto-log"))
